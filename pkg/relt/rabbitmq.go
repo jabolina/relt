@@ -55,7 +55,12 @@ type core struct {
 // this method will be executed until the connections channel is not closed.
 func (c core) subscribe() {
 	for conn := range c.connections {
-		sub := <-conn
+		var sub session
+		select {
+		case sub = <-conn:
+		case <-c.cancellable.Done():
+			return
+		}
 
 		args := make(amqp.Table)
 		args["x-queue-type"] = "quorum"
@@ -63,7 +68,7 @@ func (c core) subscribe() {
 			log.Fatalf("failed declaring queue %s: %v", c.configuration.Name, err)
 		}
 
-		if err := sub.QueueBind(c.configuration.Name, "*", c.configuration.Exchange, false, nil); err != nil {
+		if err := sub.QueueBind(c.configuration.Name, "*", string(c.configuration.Exchange), false, nil); err != nil {
 			log.Fatalf("failed binding queue %s: %v", c.configuration.Name, err)
 		}
 
@@ -101,7 +106,14 @@ func (c core) subscribe() {
 func (c core) publish() {
 	for conn := range c.connections {
 		var pending = make(chan Send, 1)
-		pub := <-conn
+		var pub session
+
+		select {
+		case pub = <-conn:
+		case <-c.cancellable.Done():
+			return
+		}
+
 		if pub.Confirm(false) == nil {
 			pub.NotifyPublish(make(chan amqp.Confirmation, 1))
 		}
@@ -110,7 +122,7 @@ func (c core) publish() {
 		for {
 			select {
 			case body := <-pending:
-				err := pub.Publish(c.configuration.Exchange, "*", false, false, amqp.Publishing{
+				err := pub.Publish(string(body.Address), "*", false, false, amqp.Publishing{
 					Body: body.Data,
 				})
 				if err != nil {
@@ -158,7 +170,7 @@ func (c core) connect() {
 			log.Fatalf("could not defined channel: %v", err)
 		}
 
-		err = ch.ExchangeDeclare(c.configuration.Exchange, "fanout", true, false, false, false, nil)
+		err = ch.ExchangeDeclare(string(c.configuration.Exchange), "fanout", true, false, false, false, nil)
 		if err != nil {
 			log.Fatalf("error declaring exchange %s: %v", c.configuration.Exchange, err)
 		}

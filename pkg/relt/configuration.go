@@ -7,7 +7,7 @@ import (
 
 var (
 	ErrInvalidConfiguration = errors.New("invalid AMQP URL for connection")
-	DefaultExchangeName     = "relt"
+	DefaultExchangeName     = GroupAddress("relt")
 )
 
 // Configuration used for creating a new instance
@@ -34,7 +34,7 @@ type ReltConfiguration struct {
 	// properly, since this will dictate which peers received the
 	// messages. If all peers are using the same exchange then
 	// is the same as all peers are a single partition.
-	Exchange string
+	Exchange GroupAddress
 }
 
 // Creates the default configuration for the Relt.

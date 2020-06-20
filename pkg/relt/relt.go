@@ -1,7 +1,13 @@
 package relt
 
 import (
+	"errors"
 	"sync"
+)
+
+var (
+	ErrInvalidGroupAddress = errors.New("group address cannot be empty")
+	ErrInvalidMessage = errors.New("message cannot be nil")
 )
 
 // Holds information about the transport context.
@@ -62,12 +68,25 @@ func (r *Relt) run() {
 	r.off.off = true
 }
 
-func (r *Relt) Consume() <-chan Recv {
-	panic("implement me")
+// Implements the Transport interface.
+func (r Relt) Consume() <-chan Recv {
+	return r.core.received
 }
 
-func (r *Relt) Broadcast(address GroupAddress, message Send) {
-	panic("implement me")
+// Implements the Transport interface.
+func (r Relt) Broadcast(message Send) error {
+	if len(message.Address) == 0 {
+		return ErrInvalidGroupAddress
+	}
+
+	if message.Data == nil {
+		return ErrInvalidMessage
+	}
+
+	r.ctx.spawn(func() {
+		r.core.sending <- message
+	})
+	return nil
 }
 
 // Implements the Transport interface.

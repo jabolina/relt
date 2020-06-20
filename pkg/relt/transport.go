@@ -15,8 +15,17 @@ type Recv struct {
 }
 
 // Denotes an information that will be sent.
+// By design, the group address cannot be empty
+// and the Data to be sent cannot be nil, must be at least
+// and empty slice.
 type Send struct {
-	Data []byte
+	// Which group the message will be sent.
+	// This is the name of the exchange that must receive
+	// the message and not an actual IP address.
+	Address GroupAddress
+
+	// Data to be sent to the group.
+	Data    []byte
 }
 
 // A interface to offer a high level API for transport.
@@ -32,7 +41,16 @@ type Transport interface {
 	// Broadcast a message to a given group.
 	// See that this not work in the request - response model,
 	// is just asynchronous message exchanges.
-	Broadcast(address GroupAddress, message Send)
+	//
+	// The message is verified upon the required fields and an
+	// error will be returned if something did not match the required
+	// needs.
+	//
+	// A goroutine will be spawned and the message will be sent
+	// through a channel, this channel is only closed when the
+	// Relt transport is closed, so if the the transport is already
+	// closed this function will panic.
+	Broadcast(message Send) error
 
 	// To shutdown the transport and stop consuming and
 	// publishing new messages.
