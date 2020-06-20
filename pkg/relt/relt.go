@@ -1,9 +1,6 @@
 package relt
 
 import (
-	"crypto/sha1"
-	"fmt"
-	"os"
 	"sync"
 )
 
@@ -35,21 +32,17 @@ type shutdown struct {
 // providing reliable communication between hosts.
 type Relt struct {
 	// Context for the transport, used internally only.
-	ctx reltContext
+	ctx *reltContext
 
 	// Information about shutdown the transport.
 	off shutdown
-}
 
-// Returns the transport identity for reconnection.
-func (r *Relt) identity() string {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return ""
-	}
+	// Holds the configuration about the core
+	// and the Relt transport.
+	configuration ReltConfiguration
 
-	hash := sha1.New()
-	return fmt.Sprintf("%x", hash.Sum([]byte(hostname)))
+	// Holds the core structure.
+	core *core
 }
 
 // Run will lock the transport waiting for a shutdown
@@ -58,7 +51,9 @@ func (r *Relt) identity() string {
 // must be finished and only then the returns
 func (r *Relt) run() {
 	r.off.mutex.Lock()
+	r.configuration.Log.Infof("starting relt %s", r.configuration.Name)
 	defer func() {
+		r.configuration.Log.Infof("stopping relt %s", r.configuration.Name)
 		close(r.off.notify)
 		r.off.mutex.Unlock()
 	}()
@@ -67,11 +62,26 @@ func (r *Relt) run() {
 	r.off.off = true
 }
 
+func (r *Relt) Consume() <-chan Recv {
+	panic("implement me")
+}
+
+func (r *Relt) Broadcast(address GroupAddress, message Send) {
+	panic("implement me")
+}
+
+// Implements the Transport interface.
+func (r *Relt) Close() {
+	r.core.close()
+	r.off.notify <- true
+	r.ctx.group.Wait()
+}
+
 // Creates a new instance of the reliable transport,
 // and start all needed routines.
-func NewRelt() *Relt {
+func NewRelt(configuration ReltConfiguration) *Relt {
 	relt := &Relt{
-		ctx: reltContext{
+		ctx: &reltContext{
 			group: &sync.WaitGroup{},
 		},
 		off: shutdown{
@@ -79,7 +89,9 @@ func NewRelt() *Relt {
 			notify: make(chan bool),
 			mutex:  &sync.Mutex{},
 		},
+		configuration: configuration,
 	}
+	relt.core = newCore(*relt)
 	relt.ctx.spawn(relt.run)
 	return relt
 }

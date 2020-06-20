@@ -1,7 +1,9 @@
 package relt
 
 import (
+	"context"
 	"github.com/streadway/amqp"
+	"log"
 )
 
 // Compose struct of an AMQP connection and channel.
@@ -16,8 +18,11 @@ type core struct {
 	// A reference for the Relt context.
 	ctx *reltContext
 
-	// Information about AMQP sessions.
-	session session
+	// Context for the core structure.
+	cancellable context.Context
+
+	// Function for closing the core.
+	cancel context.CancelFunc
 
 	// Configuration for both Relt and AMQP.
 	configuration ReltConfiguration
@@ -48,34 +53,43 @@ type core struct {
 //
 // To any messages received, it will be publish onto the messages channel, and
 // this method will be executed until the connections channel is not closed.
-func (c core) subscribe() error {
+func (c core) subscribe() {
 	for conn := range c.connections {
 		sub := <-conn
 
 		args := make(amqp.Table)
 		args["x-queue-type"] = "quorum"
-		if _, err := sub.QueueDeclare(c.configuration.Name, true, false, true, true, args); err != nil {
-			return err
+		if _, err := sub.QueueDeclare(c.configuration.Name, true, false, false, true, args); err != nil {
+			log.Fatalf("failed declaring queue %s: %v", c.configuration.Name, err)
 		}
 
 		if err := sub.QueueBind(c.configuration.Name, "*", c.configuration.Exchange, false, nil); err != nil {
-			return err
+			log.Fatalf("failed binding queue %s: %v", c.configuration.Name, err)
 		}
 
 		consume, err := sub.Consume(c.configuration.Name, "", false, true, false, false, nil)
 		if err != nil {
-			return err
+			log.Fatalf("failed consuming queue %s: %v", c.configuration.Name, err)
 		}
 
-		for packet := range consume {
-			c.received <- Recv{
-				Data:  packet.Body,
-				Error: nil,
+	Consume:
+		for {
+			select {
+			case packet, ok :=<-consume:
+				if !ok {
+					break Consume
+				}
+				c.received <- Recv{
+					Data:  packet.Body,
+					Error: nil,
+				}
+				sub.Ack(packet.DeliveryTag, false)
+			case <-c.cancellable.Done():
+				return
+
 			}
-			sub.Ack(packet.DeliveryTag, false)
 		}
 	}
-	return nil
 }
 
 // Publish a message into the RabbitMQ exchange.
@@ -109,7 +123,88 @@ func (c core) publish() {
 					return
 				}
 				pending <-body
+			case <-c.cancellable.Done():
+				return
 			}
 		}
 	}
+}
+
+// Keeps running forever providing connections
+// through the channel.
+// This method will stop when the core context
+// is done.
+func (c core) connect() {
+	sess := make(chan session)
+
+	for {
+		select {
+		case c.connections <- sess:
+		case <-c.cancellable.Done():
+			return
+		}
+
+		conn, err := amqp.Dial(c.configuration.Url)
+		if err != nil {
+			log.Fatalf("failed connection [%s]: %v", c.configuration.Url, err)
+		}
+
+
+		ch, err := conn.Channel()
+		if err != nil {
+			log.Fatalf("could not defined channel: %v", err)
+		}
+
+		err = ch.ExchangeDeclare(c.configuration.Exchange, "fanout", true, false, false, false, nil)
+		if err != nil {
+			log.Fatalf("error declaring exchange %s: %v", c.configuration.Exchange, err)
+		}
+
+		select {
+		case sess <- session{conn, ch}:
+		case <-c.cancellable.Done():
+			return
+		}
+	}
+}
+
+// Start all goroutines for publishing and consuming
+// values for the queues.
+// All spawned routines will be handled by the wait
+// group from the Relt structure and this will stop
+// when the context is canceled.
+func (c core) start() {
+	defer func() {
+		close(c.connections)
+		close(c.sending)
+		close(c.received)
+	}()
+
+	c.ctx.spawn(c.connect)
+	c.ctx.spawn(c.subscribe)
+	c.ctx.spawn(c.publish)
+
+	<-c.cancellable.Done()
+}
+
+// Cancel the context for the core structure.
+func (c core) close() {
+	c.cancel()
+}
+
+// Creates a new instance of the core structure.
+// This will also start running and consuming messages.
+func newCore(relt Relt) *core {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &core{
+		ctx:           relt.ctx,
+		cancellable:   ctx,
+		cancel:        cancel,
+		configuration: relt.configuration,
+		connections:   make(chan chan session),
+		received:      make(chan Recv),
+		sending:       make(chan Send),
+	}
+	c.ctx.spawn(c.start)
+	return c
 }

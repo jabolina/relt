@@ -1,5 +1,15 @@
 package relt
 
+import (
+	"errors"
+	"strings"
+)
+
+var (
+	ErrInvalidConfiguration = errors.New("invalid AMQP URL for connection")
+	DefaultExchangeName = "relt"
+)
+
 // Configuration used for creating a new instance
 // of the Relt.
 type ReltConfiguration struct {
@@ -8,6 +18,9 @@ type ReltConfiguration struct {
 	// This must be unique, since it will be used to declare
 	// the peer queue for consumption.
 	Name string
+
+	// Interface for logging information.
+	Log Logger
 
 	// Only plain auth is supported. The username + password
 	// will be passed in the connection URL.
@@ -22,4 +35,42 @@ type ReltConfiguration struct {
 	// messages. If all peers are using the same exchange then
 	// is the same as all peers are a single partition.
 	Exchange string
+}
+
+// Creates the default configuration for the Relt.
+// The peer, thus the queue name will be randomly generated,
+// the connection Url will connect to a local broker using
+// the user `guest` and password `guest`.
+// The default exchange will fallback to `relt`.
+func DefaultReltConfiguration() *ReltConfiguration {
+	return &ReltConfiguration{
+		Name:     GenerateUID(),
+		Url:      "amqp://guest:guest@127.0.0.1:5672/",
+		Log:      NewDefaultLogger(),
+		Exchange: DefaultExchangeName,
+	}
+}
+
+func (c *ReltConfiguration) ValidateConfiguration() error {
+	if len(c.Name) == 0 {
+		c.Name = GenerateUID()
+	}
+
+	if len(c.Exchange) == 0 {
+		c.Exchange = DefaultExchangeName
+	}
+
+	if c.Log == nil {
+		c.Log = NewDefaultLogger()
+	}
+
+	if len(c.Url) == 0 {
+		return ErrInvalidConfiguration
+	}
+
+	if strings.HasPrefix(c.Url, "amqp://") {
+		return ErrInvalidConfiguration
+	}
+
+	return nil
 }
