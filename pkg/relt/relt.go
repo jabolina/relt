@@ -23,9 +23,9 @@ func (c *reltContext) spawn(f func()) {
 
 // Context to enable the transport shutdown.
 type shutdown struct {
-	off bool
+	off    bool
 	notify chan bool
-	mutex *sync.Mutex
+	mutex  *sync.Mutex
 }
 
 // The implementation for the Transport interface

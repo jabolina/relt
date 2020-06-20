@@ -7,7 +7,7 @@ import (
 
 var (
 	ErrInvalidConfiguration = errors.New("invalid AMQP URL for connection")
-	DefaultExchangeName = "relt"
+	DefaultExchangeName     = "relt"
 )
 
 // Configuration used for creating a new instance

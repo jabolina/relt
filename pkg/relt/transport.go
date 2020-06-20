@@ -19,7 +19,6 @@ type Send struct {
 	Data []byte
 }
 
-
 // A interface to offer a high level API for transport.
 // This transport is backed by a RabbitMQ using the quorum queues,
 // that uses the Raft Protocol for consistency.
@@ -28,7 +27,7 @@ type Send struct {
 // events that can occur.
 type Transport interface {
 	// A channel for consuming received messages.
-	Consume() <- chan Recv
+	Consume() <-chan Recv
 
 	// Broadcast a message to a given group.
 	// See that this not work in the request - response model,

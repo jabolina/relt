@@ -75,7 +75,7 @@ func (c core) subscribe() {
 	Consume:
 		for {
 			select {
-			case packet, ok :=<-consume:
+			case packet, ok := <-consume:
 				if !ok {
 					break Consume
 				}
@@ -122,7 +122,7 @@ func (c core) publish() {
 				if !running {
 					return
 				}
-				pending <-body
+				pending <- body
 			case <-c.cancellable.Done():
 				return
 			}
@@ -136,6 +136,10 @@ func (c core) publish() {
 // is done.
 func (c core) connect() {
 	sess := make(chan session)
+	defer func() {
+		close(sess)
+		close(c.connections)
+	}()
 
 	for {
 		select {
@@ -148,7 +152,6 @@ func (c core) connect() {
 		if err != nil {
 			log.Fatalf("failed connection [%s]: %v", c.configuration.Url, err)
 		}
-
 
 		ch, err := conn.Channel()
 		if err != nil {
@@ -175,7 +178,6 @@ func (c core) connect() {
 // when the context is canceled.
 func (c core) start() {
 	defer func() {
-		close(c.connections)
 		close(c.sending)
 		close(c.received)
 	}()
