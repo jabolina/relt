@@ -2,6 +2,7 @@ package relt
 
 import (
 	"context"
+	"github.com/hashicorp/raft"
 	"github.com/streadway/amqp"
 	"log"
 )
@@ -126,7 +127,7 @@ func (c core) readQueue() {
 						continue
 					}
 					if next != nil {
-						c.sending <-next.(Send)
+						c.sending <- next.(Send)
 					}
 				}
 			}
@@ -238,12 +239,39 @@ func newCore(relt Relt) (*core, error) {
 	}
 
 	var peers []*publisher
+	var servers []raft.Server
 	for i := 0; i < relt.configuration.Replication; i++ {
 		peer, err := newPublisher(c)
 		if err != nil {
 			return nil, err
 		}
 		peers = append(peers, peer)
+		servers = append(servers, raft.Server{
+			ID:      raft.ServerID(peer.address),
+			Address: raft.ServerAddress(peer.address),
+		})
+	}
+
+	errorChan := make(chan bool, len(peers))
+	bootstrap := func(peer *publisher) {
+		err := peer.join(servers)
+		errorChan <- err != nil
+	}
+
+	for _, peer := range peers {
+		go bootstrap(peer)
+	}
+
+	responses := 0
+	for failed := range errorChan {
+		responses++
+		if failed {
+			return nil, ErrBoostrappingCluster
+		}
+
+		if responses == len(peers) {
+			close(errorChan)
+		}
 	}
 
 	c.publishers = peers

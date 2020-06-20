@@ -18,6 +18,10 @@ var (
 	// Used when no leader is found amongst the peers.
 	ErrLeaderNotFound = errors.New("not found leader to publish message")
 
+	// When all peers are created, the Raft cluster must be bootstrapped,
+	// this error is used in case this fails.
+	ErrBoostrappingCluster = errors.New("error while bootstrapping the cluster")
+
 	// Operation used to insert a new value on the queue.
 	setop operation = "set"
 

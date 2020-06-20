@@ -25,7 +25,7 @@ type Send struct {
 	Address GroupAddress
 
 	// Data to be sent to the group.
-	Data    []byte
+	Data []byte
 }
 
 // A interface to offer a high level API for transport.

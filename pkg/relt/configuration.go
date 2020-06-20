@@ -51,7 +51,7 @@ func DefaultReltConfiguration() *ReltConfiguration {
 		Name:        GenerateUID(),
 		Url:         "amqp://guest:guest@127.0.0.1:5672/",
 		Replication: 3,
-		Log:      	 NewDefaultLogger(),
+		Log:         NewDefaultLogger(),
 		Exchange:    DefaultExchangeName,
 	}
 }

@@ -29,7 +29,7 @@ func produce(r *relt.Relt, reader io.Reader) {
 
 func consume(r *relt.Relt) {
 	for {
-		message :=<-r.Consume()
+		message := <-r.Consume()
 		if message.Error != nil {
 			log.Errorf("message with error: %#v", message)
 		}

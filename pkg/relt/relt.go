@@ -7,7 +7,7 @@ import (
 
 var (
 	ErrInvalidGroupAddress = errors.New("group address cannot be empty")
-	ErrInvalidMessage = errors.New("message cannot be nil")
+	ErrInvalidMessage      = errors.New("message cannot be nil")
 )
 
 // Holds information about the transport context.

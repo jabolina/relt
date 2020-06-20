@@ -17,7 +17,7 @@ import (
 // thus being able to change the values on the distributed queue.
 type publisher struct {
 	// The core RabbitMQ for listen for connections.
-	rabbit  *core
+	rabbit *core
 
 	// Holds a raft instance to issue new requests.
 	raft *raft.Raft
@@ -27,13 +27,13 @@ type publisher struct {
 	address string
 
 	// The distributed queue instance.
-	queue   *messageQueueStateMachine
+	queue *messageQueueStateMachine
 
 	// The publisher cancellable context.
 	context context.Context
 
 	// Function the close the publisher
-	done    context.CancelFunc
+	done context.CancelFunc
 }
 
 // Publish a message into the RabbitMQ exchange.
@@ -43,7 +43,7 @@ type publisher struct {
 // published into the configured exchange, thus broadcasting
 // the messages to all connected consumers.
 func (p publisher) publish() {
-	for conn := range p. rabbit.connections {
+	for conn := range p.rabbit.connections {
 		var pending = make(chan Send, 1)
 		var pub session
 
@@ -63,13 +63,14 @@ func (p publisher) publish() {
 	Publish:
 		for {
 			select {
-			case confirmed, ok :=<-confirm:
+			case confirmed, ok := <-confirm:
 				if !ok {
 					break Publish
 				}
 
 				if confirmed.Ack {
-					for err := p.Remove(); err != nil; {}
+					for err := p.Remove(); err != nil; {
+					}
 				}
 
 				p.rabbit.ask <- true
@@ -129,7 +130,7 @@ func (p *publisher) Offer(value interface{}) error {
 // Publisher implements DQueue
 func (p *publisher) Next() (interface{}, error) {
 	cmd := &command{
-		Op:    nexop,
+		Op: nexop,
 	}
 	return p.apply(cmd)
 }
@@ -137,7 +138,7 @@ func (p *publisher) Next() (interface{}, error) {
 // Publisher implements DQueue
 func (p *publisher) Remove() error {
 	cmd := &command{
-		Op:    delop,
+		Op: delop,
 	}
 	_, err := p.apply(cmd)
 	return err
@@ -154,6 +155,12 @@ func (p publisher) stop() {
 	fut := p.raft.Shutdown()
 	fut.Error()
 	p.done()
+}
+
+// Start the Raft cluster.
+func (p publisher) join(cluster []raft.Server) error {
+	fut := p.raft.BootstrapCluster(raft.Configuration{Servers: cluster})
+	return fut.Error()
 }
 
 // Creates a new publisher and prepare a new instance
@@ -181,7 +188,7 @@ func newPublisher(rabbitmq *core) (*publisher, error) {
 	}
 
 	dataDir := "/tmp/" + rabbitmq.configuration.Name
-	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
+	if _, err = os.Stat(dataDir); os.IsNotExist(err) {
 		if err = os.Mkdir(dataDir, 0755); err != nil {
 			return nil, err
 		}
