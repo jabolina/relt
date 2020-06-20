@@ -81,7 +81,9 @@ func (c core) subscribe() {
 		for {
 			select {
 			case packet, ok := <-consume:
+				c.configuration.Log.Info("packet arrived!!")
 				if !ok {
+					c.configuration.Log.Info("consume channel closed!!")
 					break Consume
 				}
 				c.received <- Recv{
@@ -91,9 +93,10 @@ func (c core) subscribe() {
 				sub.Ack(packet.DeliveryTag, false)
 			case <-c.cancellable.Done():
 				return
-
 			}
 		}
+
+		c.configuration.Log.Info("stop recv for")
 	}
 }
 
@@ -114,13 +117,20 @@ func (c core) publish() {
 			return
 		}
 
+		confirm := make(chan amqp.Confirmation, 1)
 		if pub.Confirm(false) == nil {
-			pub.NotifyPublish(make(chan amqp.Confirmation, 1))
+			pub.NotifyPublish(confirm)
+		} else {
+			close(confirm)
 		}
 
 	Publish:
 		for {
 			select {
+			case _, ok :=<-confirm:
+				if !ok {
+					break Publish
+				}
 			case body := <-pending:
 				err := pub.Publish(string(body.Address), "*", false, false, amqp.Publishing{
 					Body: body.Data,
