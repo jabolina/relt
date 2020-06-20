@@ -35,11 +35,6 @@ type Transport interface {
 	// is just asynchronous message exchanges.
 	Broadcast(address GroupAddress, message Send)
 
-	// Multicast a message to a given group.
-	// See that this not work in the request - response model,
-	// is just asynchronous message exchanges.
-	Multicast(address GroupAddress, message Send)
-
 	// To shutdown the transport and stop consuming and
 	// publishing new messages.
 	Close()
