@@ -3,6 +3,7 @@ package relt
 import (
 	crand "crypto/rand"
 	"fmt"
+	"net"
 )
 
 // Generates a random 128-bit UUID, panic if not possible.
@@ -17,4 +18,16 @@ func GenerateUID() string {
 		buf[6:8],
 		buf[8:10],
 		buf[10:16])
+}
+
+// Generates a random valid address to listen into.
+func GenerateRandomIP() (string, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	defer listener.Close()
+
+	if err != nil {
+		return "", err
+	}
+
+	return listener.Addr().String(), nil
 }

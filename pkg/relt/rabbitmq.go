@@ -16,7 +16,11 @@ type session struct {
 // sending and receiving messages through RabbitMQ.
 type core struct {
 	// A reference for the Relt context.
-	ctx *reltContext
+	ctx *invoker
+
+	// All publishers created, this will have the same
+	// length as the Replication value configured.
+	publishers []*publisher
 
 	// Context for the core structure.
 	cancellable context.Context
@@ -30,6 +34,10 @@ type core struct {
 	// When connected or when a sessions arrives, publish into
 	// the channel.
 	connections chan chan session
+
+	// Channel to confirm that the publisher is ready
+	// for the next message.
+	ask chan bool
 
 	// Channel for publishing received messages.
 	received chan Recv
@@ -100,56 +108,51 @@ func (c core) subscribe() {
 	}
 }
 
-// Publish a message into the RabbitMQ exchange.
+// When the publisher confirms a message,
+// it will notify through the channel to consume the next
+// message. So retrieve the message from the queue head and
+// delivers the message on the sending channel.
 //
-// This method will keep polling until the sending channel
-// is open. Any message received from the channel will be
-// published into the configured exchange, thus broadcasting
-// the messages to all connected consumers.
-func (c core) publish() {
-	for conn := range c.connections {
-		var pending = make(chan Send, 1)
-		var pub session
-
+// This will be executed while the application is not closed.
+func (c core) readQueue() {
+	for {
 		select {
-		case pub = <-conn:
+		case <-c.ask:
+			for _, p := range c.publishers {
+				if p.amILeader() {
+					next, err := p.Next()
+					if err != nil {
+						c.configuration.Log.Errorf("failed reading queue head: %v", err)
+						continue
+					}
+					if next != nil {
+						c.sending <-next.(Send)
+					}
+				}
+			}
 		case <-c.cancellable.Done():
 			return
 		}
+	}
+}
 
-		confirm := make(chan amqp.Confirmation, 1)
-		if pub.Confirm(false) == nil {
-			pub.NotifyPublish(confirm)
-		} else {
-			close(confirm)
-		}
-
-	Publish:
-		for {
-			select {
-			case _, ok :=<-confirm:
-				if !ok {
-					break Publish
-				}
-			case body := <-pending:
-				err := pub.Publish(string(body.Address), "*", false, false, amqp.Publishing{
-					Body: body.Data,
-				})
-				if err != nil {
-					pending <- body
-					pub.Connection.Close()
-					break Publish
-				}
-			case body, running := <-c.sending:
-				if !running {
-					return
-				}
-				pending <- body
-			case <-c.cancellable.Done():
-				return
+// Sends a message to the Raft protocol to be committed
+// on the distributed queue.
+// Once the message is committed, send through the message
+// channel so any publisher can send the message to the
+// RabbitMQ broker.
+func (c core) publish(message Send) error {
+	for _, p := range c.publishers {
+		if p.amILeader() {
+			err := p.Offer(message)
+			if err != nil {
+				return err
 			}
+			c.sending <- message
+			return nil
 		}
 	}
+	return ErrLeaderNotFound
 }
 
 // Keeps running forever providing connections
@@ -202,23 +205,26 @@ func (c core) start() {
 	defer func() {
 		close(c.sending)
 		close(c.received)
+		close(c.ask)
 	}()
 
 	c.ctx.spawn(c.connect)
 	c.ctx.spawn(c.subscribe)
-	c.ctx.spawn(c.publish)
 
 	<-c.cancellable.Done()
 }
 
 // Cancel the context for the core structure.
 func (c core) close() {
+	for _, p := range c.publishers {
+		p.stop()
+	}
 	c.cancel()
 }
 
 // Creates a new instance of the core structure.
 // This will also start running and consuming messages.
-func newCore(relt Relt) *core {
+func newCore(relt Relt) (*core, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &core{
 		ctx:           relt.ctx,
@@ -228,7 +234,19 @@ func newCore(relt Relt) *core {
 		connections:   make(chan chan session),
 		received:      make(chan Recv),
 		sending:       make(chan Send),
+		ask:           make(chan bool),
 	}
+
+	var peers []*publisher
+	for i := 0; i < relt.configuration.Replication; i++ {
+		peer, err := newPublisher(c)
+		if err != nil {
+			return nil, err
+		}
+		peers = append(peers, peer)
+	}
+
+	c.publishers = peers
 	c.ctx.spawn(c.start)
-	return c
+	return c, nil
 }

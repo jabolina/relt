@@ -12,14 +12,14 @@ var (
 
 // Holds information about the transport context.
 // Such as keeping track of spawned goroutines.
-type reltContext struct {
+type invoker struct {
 	// Used to track goroutines.
 	group *sync.WaitGroup
 }
 
 // Spawn a new goroutine and controls it with
 // the wait group.
-func (c *reltContext) spawn(f func()) {
+func (c *invoker) spawn(f func()) {
 	c.group.Add(1)
 	go func() {
 		defer c.group.Done()
@@ -38,7 +38,7 @@ type shutdown struct {
 // providing reliable communication between hosts.
 type Relt struct {
 	// Context for the transport, used internally only.
-	ctx *reltContext
+	ctx *invoker
 
 	// Information about shutdown the transport.
 	off shutdown
@@ -83,10 +83,7 @@ func (r Relt) Broadcast(message Send) error {
 		return ErrInvalidMessage
 	}
 
-	r.ctx.spawn(func() {
-		r.core.sending <- message
-	})
-	return nil
+	return r.core.publish(message)
 }
 
 // Implements the Transport interface.
@@ -98,9 +95,9 @@ func (r *Relt) Close() {
 
 // Creates a new instance of the reliable transport,
 // and start all needed routines.
-func NewRelt(configuration ReltConfiguration) *Relt {
+func NewRelt(configuration ReltConfiguration) (*Relt, error) {
 	relt := &Relt{
-		ctx: &reltContext{
+		ctx: &invoker{
 			group: &sync.WaitGroup{},
 		},
 		off: shutdown{
@@ -110,7 +107,11 @@ func NewRelt(configuration ReltConfiguration) *Relt {
 		},
 		configuration: configuration,
 	}
-	relt.core = newCore(*relt)
+	c, err := newCore(*relt)
+	if err != nil {
+		return nil, err
+	}
+	relt.core = c
 	relt.ctx.spawn(relt.run)
-	return relt
+	return relt, nil
 }
