@@ -90,7 +90,6 @@ func (c core) subscribe() {
 		for {
 			select {
 			case packet, ok := <-consume:
-				c.configuration.Log.Info("packet arrived!!")
 				if !ok {
 					c.configuration.Log.Info("consume channel closed!!")
 					break Consume
@@ -99,7 +98,8 @@ func (c core) subscribe() {
 					Data:  packet.Body,
 					Error: nil,
 				}
-				sub.Ack(packet.DeliveryTag, false)
+				for err := sub.Ack(packet.DeliveryTag, false); err != nil; {
+				}
 			case <-c.cancellable.Done():
 				return
 			}
@@ -118,12 +118,16 @@ func (c core) subscribe() {
 func (c core) readQueue() {
 	for {
 		select {
-		case <-c.ask:
+		case success := <-c.ask:
 			for _, p := range c.publishers {
 				if p.amILeader() {
+					if success {
+						for err := p.Remove(); err != nil; {
+						}
+					}
+
 					next, err := p.Next()
 					if err != nil {
-						c.configuration.Log.Errorf("failed reading queue head: %v", err)
 						continue
 					}
 					if next != nil {
@@ -211,6 +215,7 @@ func (c core) start() {
 
 	c.ctx.spawn(c.connect)
 	c.ctx.spawn(c.subscribe)
+	c.ctx.spawn(c.readQueue)
 
 	<-c.cancellable.Done()
 }

@@ -75,20 +75,26 @@ func (q *messageQueueStateMachine) set(value Send) interface{} {
 }
 
 // Return the head element of the queue.
-func (q *messageQueueStateMachine) next() Send {
+func (q *messageQueueStateMachine) next() interface{} {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	value := q.values.Front()
-	return value.Value.(Send)
+	if value != nil {
+		return value.Value.(Send)
+	}
+	return nil
 }
 
 // Remove the head element from the queue.
-func (q *messageQueueStateMachine) delete() Send {
+func (q *messageQueueStateMachine) delete() interface{} {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	value := q.values.Front()
-	q.values.Remove(value)
-	return value.Value.(Send)
+	if value != nil {
+		q.values.Remove(value)
+		return value.Value.(Send)
+	}
+	return nil
 }
 
 // messageQueueStateMachine implements FSM

@@ -40,7 +40,10 @@ func consume(r *relt.Relt) {
 func main() {
 	conf := relt.DefaultReltConfiguration()
 	conf.Name = "local-test"
-	relt := relt.NewRelt(*conf)
+	relt, err := relt.NewRelt(*conf)
+	if err != nil {
+		log.Fatalf("failed creating relt. %v", err)
+	}
 	ctx, done := context.WithCancel(context.Background())
 
 	go func() {

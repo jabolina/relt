@@ -68,12 +68,7 @@ func (p publisher) publish() {
 					break Publish
 				}
 
-				if confirmed.Ack {
-					for err := p.Remove(); err != nil; {
-					}
-				}
-
-				p.rabbit.ask <- true
+				p.rabbit.ask <- confirmed.Ack
 			case body := <-pending:
 				err := pub.Publish(string(body.Address), "*", false, false, amqp.Publishing{
 					Body: body.Data,
