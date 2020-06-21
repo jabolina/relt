@@ -1,4 +1,4 @@
-module relt
+module github.com/jabolina/relt
 
 go 1.14
 
