@@ -20,9 +20,6 @@ type ReltConfiguration struct {
 	// the peer queue for consumption.
 	Name string
 
-	// Interface for logging information.
-	Log Logger
-
 	// Only plain auth is supported. The username + password
 	// will be passed in the connection URL.
 	Url string
@@ -51,7 +48,6 @@ func DefaultReltConfiguration() *ReltConfiguration {
 		Name:        GenerateUID(),
 		Url:         "amqp://guest:guest@127.0.0.1:5672/",
 		Replication: 3,
-		Log:         NewDefaultLogger(),
 		Exchange:    DefaultExchangeName,
 	}
 }
@@ -68,10 +64,6 @@ func (c *ReltConfiguration) ValidateConfiguration() error {
 
 	if c.Replication <= 0 {
 		return ErrInvalidReplication
-	}
-
-	if c.Log == nil {
-		c.Log = NewDefaultLogger()
 	}
 
 	if len(c.Url) == 0 {

@@ -91,7 +91,6 @@ func (c core) subscribe() {
 			select {
 			case packet, ok := <-consume:
 				if !ok {
-					c.configuration.Log.Info("consume channel closed!!")
 					break Consume
 				}
 				c.received <- Recv{
@@ -104,8 +103,6 @@ func (c core) subscribe() {
 				return
 			}
 		}
-
-		c.configuration.Log.Info("stop recv for")
 	}
 }
 

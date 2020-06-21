@@ -57,9 +57,7 @@ type Relt struct {
 // must be finished and only then the returns
 func (r *Relt) run() {
 	r.off.mutex.Lock()
-	r.configuration.Log.Infof("starting relt %s", r.configuration.Name)
 	defer func() {
-		r.configuration.Log.Infof("stopping relt %s", r.configuration.Name)
 		close(r.off.notify)
 		r.off.mutex.Unlock()
 	}()
