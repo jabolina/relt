@@ -240,10 +240,20 @@ func newCore(relt Relt) (*core, error) {
 		ask:           make(chan bool),
 	}
 
+	leaderChan := make(chan raft.Observation)
+	observer := raft.NewObserver(leaderChan, false, func(o *raft.Observation) bool {
+		switch leader := o.Data.(type) {
+		case raft.LeaderObservation:
+			return len(leader.Leader) > 0
+		default:
+			return false
+		}
+	})
+
 	var peers []*publisher
 	var servers []raft.Server
 	for i := 0; i < relt.configuration.Replication; i++ {
-		peer, err := newPublisher(c)
+		peer, err := newPublisher(c, observer)
 		if err != nil {
 			return nil, err
 		}
@@ -278,5 +288,6 @@ func newCore(relt Relt) (*core, error) {
 
 	c.publishers = peers
 	c.ctx.spawn(c.start)
+	<-leaderChan
 	return c, nil
 }

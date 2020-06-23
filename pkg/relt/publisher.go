@@ -163,7 +163,7 @@ func (p publisher) join(cluster []raft.Server) error {
 // The created peer will bind to a random address to use
 // the Raft protocol, and the directory to be used by the
 // protocol will be placed at the /tmp folder.
-func newPublisher(rabbitmq *core) (*publisher, error) {
+func newPublisher(rabbitmq *core, o *raft.Observer) (*publisher, error) {
 	raftConf := raft.DefaultConfig()
 	bind, err := GenerateRandomIP()
 	if err != nil {
@@ -210,6 +210,7 @@ func newPublisher(rabbitmq *core) (*publisher, error) {
 		context: ctx,
 		done:    done,
 	}
+	ra.RegisterObserver(o)
 	rabbitmq.ctx.spawn(p.start)
 	return p, nil
 }
