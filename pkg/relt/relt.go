@@ -89,8 +89,8 @@ func NewRelt(configuration ReltConfiguration) (*Relt, error) {
 		ctx: &invoker{
 			group: &sync.WaitGroup{},
 		},
-		cancel: ctx,
-		finish: done,
+		cancel:        ctx,
+		finish:        done,
 		configuration: configuration,
 	}
 	c, err := newCore(*relt)
