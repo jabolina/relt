@@ -1,7 +1,7 @@
 package test
 
 import (
-	"relt/pkg/relt"
+	"github.com/jabolina/relt/pkg/relt"
 	"testing"
 )
 

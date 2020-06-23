@@ -3,13 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"github.com/jabolina/relt/pkg/relt"
+	"github.com/prometheus/common/log"
 	"io"
 	"os"
-	"relt/pkg/relt"
 	"time"
 )
-
-var log = relt.NewDefaultLogger()
 
 func produce(r *relt.Relt, reader io.Reader) {
 	for {

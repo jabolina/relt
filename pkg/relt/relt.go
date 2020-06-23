@@ -1,6 +1,7 @@
 package relt
 
 import (
+	"context"
 	"errors"
 	"sync"
 )
@@ -27,13 +28,6 @@ func (c *invoker) spawn(f func()) {
 	}()
 }
 
-// Context to enable the transport shutdown.
-type shutdown struct {
-	off    bool
-	notify chan bool
-	mutex  *sync.Mutex
-}
-
 // The implementation for the Transport interface
 // providing reliable communication between hosts.
 type Relt struct {
@@ -41,7 +35,10 @@ type Relt struct {
 	ctx *invoker
 
 	// Information about shutdown the transport.
-	off shutdown
+	cancel context.Context
+
+	// Cancel the transport context.
+	finish context.CancelFunc
 
 	// Holds the configuration about the core
 	// and the Relt transport.
@@ -56,14 +53,7 @@ type Relt struct {
 // When a shutdown notification arrives all goroutines
 // must be finished and only then the returns
 func (r *Relt) run() {
-	r.off.mutex.Lock()
-	defer func() {
-		close(r.off.notify)
-		r.off.mutex.Unlock()
-	}()
-
-	<-r.off.notify
-	r.off.off = true
+	<-r.cancel.Done()
 }
 
 // Implements the Transport interface.
@@ -87,22 +77,20 @@ func (r Relt) Broadcast(message Send) error {
 // Implements the Transport interface.
 func (r *Relt) Close() {
 	r.core.close()
-	r.off.notify <- true
+	r.finish()
 	r.ctx.group.Wait()
 }
 
 // Creates a new instance of the reliable transport,
 // and start all needed routines.
 func NewRelt(configuration ReltConfiguration) (*Relt, error) {
+	ctx, done := context.WithCancel(context.Background())
 	relt := &Relt{
 		ctx: &invoker{
 			group: &sync.WaitGroup{},
 		},
-		off: shutdown{
-			off:    false,
-			notify: make(chan bool),
-			mutex:  &sync.Mutex{},
-		},
+		cancel: ctx,
+		finish: done,
 		configuration: configuration,
 	}
 	c, err := newCore(*relt)
