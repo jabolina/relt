@@ -71,7 +71,11 @@ func (r Relt) Broadcast(message Send) error {
 		return ErrInvalidMessage
 	}
 
-	return r.core.publish(message)
+	r.ctx.spawn(func() {
+		r.core.sending <- message
+	})
+
+	return nil
 }
 
 // Implements the Transport interface.
@@ -83,7 +87,7 @@ func (r *Relt) Close() {
 
 // Creates a new instance of the reliable transport,
 // and start all needed routines.
-func NewRelt(configuration ReltConfiguration) (*Relt, error) {
+func NewRelt(configuration ReltConfiguration) *Relt {
 	ctx, done := context.WithCancel(context.Background())
 	relt := &Relt{
 		ctx: &invoker{
@@ -93,11 +97,7 @@ func NewRelt(configuration ReltConfiguration) (*Relt, error) {
 		finish:        done,
 		configuration: configuration,
 	}
-	c, err := newCore(*relt)
-	if err != nil {
-		return nil, err
-	}
-	relt.core = c
+	relt.core = newCore(*relt)
 	relt.ctx.spawn(relt.run)
-	return relt, nil
+	return relt
 }

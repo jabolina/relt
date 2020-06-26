@@ -2,7 +2,6 @@ package relt
 
 import (
 	"context"
-	"github.com/hashicorp/raft"
 	"github.com/streadway/amqp"
 	"log"
 )
@@ -19,10 +18,6 @@ type core struct {
 	// A reference for the Relt context.
 	ctx *invoker
 
-	// All publishers created, this will have the same
-	// length as the Replication value configured.
-	publishers []*publisher
-
 	// Context for the core structure.
 	cancellable context.Context
 
@@ -36,15 +31,14 @@ type core struct {
 	// the channel.
 	connections chan chan session
 
-	// Channel to confirm that the publisher is ready
-	// for the next message.
-	ask chan bool
-
 	// Channel for publishing received messages.
 	received chan Recv
 
 	// Channel for receiving messages to be published.
 	sending chan Send
+
+	// Use to emit when subscribed to a queue.
+	subscribed chan bool
 }
 
 // Subscribe to a queue and starts consuming.
@@ -86,6 +80,8 @@ func (c core) subscribe() {
 			log.Fatalf("failed consuming queue %s: %v", c.configuration.Name, err)
 		}
 
+		c.subscribed<-true
+
 	Consume:
 		for {
 			select {
@@ -93,11 +89,10 @@ func (c core) subscribe() {
 				if !ok {
 					break Consume
 				}
+				for err := sub.Ack(packet.DeliveryTag, false); err != nil; {}
 				c.received <- Recv{
 					Data:  packet.Body,
 					Error: nil,
-				}
-				for err := sub.Ack(packet.DeliveryTag, false); err != nil; {
 				}
 			case <-c.cancellable.Done():
 				return
@@ -106,55 +101,57 @@ func (c core) subscribe() {
 	}
 }
 
-// When the publisher confirms a message,
-// it will notify through the channel to consume the next
-// message. So retrieve the message from the queue head and
-// delivers the message on the sending channel.
+// Publish a message on the RabbitMQ exchange.
+// See that this will publish in a fanout exchange,
+// this means that all queues related to the exchange
+// will receive the message all will ignore the configured key.
 //
-// This will be executed while the application is not closed.
-func (c core) readQueue() {
-	for {
-		select {
-		case success := <-c.ask:
-			for _, p := range c.publishers {
-				if p.amILeader() {
-					if success {
-						for err := p.Remove(); err != nil; {
-						}
-					}
+// This will keep polling until the context is cancelled, and
+// will receive messages to be published through the channel.
+func (c core) publish() {
+	for conn := range c.connections {
+		var pending = make(chan Send, 1)
+		var pub session
 
-					next, err := p.Next()
-					if err != nil {
-						continue
-					}
-					if next != nil {
-						c.sending <- next.(Send)
-					}
-				}
-			}
+		select {
+		case pub = <-conn:
 		case <-c.cancellable.Done():
 			return
 		}
-	}
-}
 
-// Sends a message to the Raft protocol to be committed
-// on the distributed queue.
-// Once the message is committed, send through the message
-// channel so any publisher can send the message to the
-// RabbitMQ broker.
-func (c core) publish(message Send) error {
-	for _, p := range c.publishers {
-		if p.amILeader() {
-			err := p.Offer(message)
-			if err != nil {
-				return err
+		confirm := make(chan amqp.Confirmation, 1)
+		if pub.Confirm(false) == nil {
+			pub.NotifyPublish(confirm)
+		} else {
+			close(confirm)
+		}
+
+	Publish:
+		for {
+			select {
+			case _, ok := <-confirm:
+				if !ok {
+					break Publish
+				}
+			case body := <-pending:
+				err := pub.Publish(string(body.Address), "*", false, false, amqp.Publishing{
+					Body: body.Data,
+				})
+				if err != nil {
+					pending <- body
+					pub.Connection.Close()
+					break Publish
+				}
+			case body, running := <-c.sending:
+				if !running {
+					return
+				}
+				pending <- body
+			case <-c.cancellable.Done():
+				return
 			}
-			c.sending <- message
-			return nil
 		}
 	}
-	return ErrLeaderNotFound
 }
 
 // Keeps running forever providing connections
@@ -207,27 +204,29 @@ func (c core) start() {
 	defer func() {
 		close(c.sending)
 		close(c.received)
-		close(c.ask)
 	}()
 
 	c.ctx.spawn(c.connect)
 	c.ctx.spawn(c.subscribe)
-	c.ctx.spawn(c.readQueue)
+	c.ctx.spawn(c.publish)
 
-	<-c.cancellable.Done()
+	for {
+		select {
+		case <-c.subscribed:
+		case <-c.cancellable.Done():
+			return
+		}
+	}
 }
 
 // Cancel the context for the core structure.
 func (c core) close() {
-	for _, p := range c.publishers {
-		p.stop()
-	}
 	c.cancel()
 }
 
 // Creates a new instance of the core structure.
 // This will also start running and consuming messages.
-func newCore(relt Relt) (*core, error) {
+func newCore(relt Relt) *core {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &core{
 		ctx:           relt.ctx,
@@ -237,57 +236,9 @@ func newCore(relt Relt) (*core, error) {
 		connections:   make(chan chan session),
 		received:      make(chan Recv),
 		sending:       make(chan Send),
-		ask:           make(chan bool),
+		subscribed:    make(chan bool),
 	}
-
-	leaderChan := make(chan raft.Observation)
-	observer := raft.NewObserver(leaderChan, false, func(o *raft.Observation) bool {
-		switch leader := o.Data.(type) {
-		case raft.LeaderObservation:
-			return len(leader.Leader) > 0
-		default:
-			return false
-		}
-	})
-
-	var peers []*publisher
-	var servers []raft.Server
-	for i := 0; i < relt.configuration.Replication; i++ {
-		peer, err := newPublisher(c, observer)
-		if err != nil {
-			return nil, err
-		}
-		peers = append(peers, peer)
-		servers = append(servers, raft.Server{
-			ID:      raft.ServerID(peer.address),
-			Address: raft.ServerAddress(peer.address),
-		})
-	}
-
-	errorChan := make(chan bool, len(peers))
-	bootstrap := func(peer *publisher) {
-		err := peer.join(servers)
-		errorChan <- err != nil
-	}
-
-	for _, peer := range peers {
-		go bootstrap(peer)
-	}
-
-	responses := 0
-	for failed := range errorChan {
-		responses++
-		if failed {
-			return nil, ErrBoostrappingCluster
-		}
-
-		if responses == len(peers) {
-			close(errorChan)
-		}
-	}
-
-	c.publishers = peers
 	c.ctx.spawn(c.start)
-	<-leaderChan
-	return c, nil
+	<-c.subscribed
+	return c
 }
