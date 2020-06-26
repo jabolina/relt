@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/common/log"
 	"io"
 	"os"
-	"time"
+	"os/signal"
 )
 
 func produce(r *relt.Relt, reader io.Reader) {
@@ -26,23 +26,24 @@ func produce(r *relt.Relt, reader io.Reader) {
 	}
 }
 
-func consume(r *relt.Relt) {
+func consume(r *relt.Relt, ctx context.Context) {
 	for {
-		message := <-r.Consume()
-		if message.Error != nil {
-			log.Errorf("message with error: %#v", message)
+		select {
+		case message := <-r.Consume():
+			if message.Error != nil {
+				log.Errorf("message with error: %#v", message)
+			}
+			log.Infof("Received [%s]", string(message.Data))
+		case <-ctx.Done():
+			return
 		}
-		log.Infof("Received [%s]", string(message.Data))
 	}
 }
 
 func main() {
 	conf := relt.DefaultReltConfiguration()
 	conf.Name = "local-test"
-	relt, err := relt.NewRelt(*conf)
-	if err != nil {
-		log.Fatalf("failed creating relt. %v", err)
-	}
+	relt := relt.NewRelt(*conf)
 	ctx, done := context.WithCancel(context.Background())
 
 	go func() {
@@ -53,9 +54,12 @@ func main() {
 		consume(relt)
 	}()
 
-	go func() {
-		time.Sleep(time.Minute)
-		done()
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func(){
+		for range c {
+			done()
+		}
 	}()
 
 	<-ctx.Done()

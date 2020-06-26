@@ -7,7 +7,6 @@ import (
 
 var (
 	ErrInvalidConfiguration = errors.New("invalid AMQP URL for connection")
-	ErrInvalidReplication   = errors.New("replication value is invalid")
 	DefaultExchangeName     = GroupAddress("relt")
 )
 
@@ -23,9 +22,6 @@ type ReltConfiguration struct {
 	// Only plain auth is supported. The username + password
 	// will be passed in the connection URL.
 	Url string
-
-	// How many peers should be replicated.
-	Replication int
 
 	// This will be used to create an exchange on the RabbitMQ
 	// broker. If the user wants to declare its own name for the
@@ -47,7 +43,6 @@ func DefaultReltConfiguration() *ReltConfiguration {
 	return &ReltConfiguration{
 		Name:        GenerateUID(),
 		Url:         "amqp://guest:guest@127.0.0.1:5672/",
-		Replication: 3,
 		Exchange:    DefaultExchangeName,
 	}
 }
@@ -62,10 +57,6 @@ func (c *ReltConfiguration) ValidateConfiguration() error {
 		c.Exchange = DefaultExchangeName
 	}
 
-	if c.Replication <= 0 {
-		return ErrInvalidReplication
-	}
-
 	if len(c.Url) == 0 {
 		return ErrInvalidConfiguration
 	}
@@ -75,9 +66,4 @@ func (c *ReltConfiguration) ValidateConfiguration() error {
 	}
 
 	return nil
-}
-
-// Configuration to be applied on a single publisher.
-type publisherConfiguration struct {
-	ReltConfiguration
 }
