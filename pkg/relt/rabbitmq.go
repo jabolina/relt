@@ -80,7 +80,7 @@ func (c core) subscribe() {
 			log.Fatalf("failed consuming queue %s: %v", c.configuration.Name, err)
 		}
 
-		c.subscribed<-true
+		c.subscribed <- true
 
 	Consume:
 		for {
@@ -89,7 +89,8 @@ func (c core) subscribe() {
 				if !ok {
 					break Consume
 				}
-				for err := sub.Ack(packet.DeliveryTag, false); err != nil; {}
+				for err := sub.Ack(packet.DeliveryTag, false); err != nil; {
+				}
 				c.received <- Recv{
 					Data:  packet.Body,
 					Error: nil,

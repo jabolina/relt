@@ -41,9 +41,9 @@ type ReltConfiguration struct {
 // The default exchange will fallback to `relt`.
 func DefaultReltConfiguration() *ReltConfiguration {
 	return &ReltConfiguration{
-		Name:        GenerateUID(),
-		Url:         "amqp://guest:guest@127.0.0.1:5672/",
-		Exchange:    DefaultExchangeName,
+		Name:     GenerateUID(),
+		Url:      "amqp://guest:guest@127.0.0.1:5672/",
+		Exchange: DefaultExchangeName,
 	}
 }
 

@@ -51,12 +51,12 @@ func main() {
 	}()
 
 	go func() {
-		consume(relt)
+		consume(relt, ctx)
 	}()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func(){
+	go func() {
 		for range c {
 			done()
 		}
