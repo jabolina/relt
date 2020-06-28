@@ -65,9 +65,7 @@ func (c core) subscribe() {
 			return
 		}
 
-		args := make(amqp.Table)
-		args["x-queue-type"] = "quorum"
-		if _, err := sub.QueueDeclare(c.configuration.Name, true, false, false, true, args); err != nil {
+		if _, err := sub.QueueDeclare(c.configuration.Name, false, true, true, true, nil); err != nil {
 			log.Fatalf("failed declaring queue %s: %v", c.configuration.Name, err)
 		}
 
@@ -90,6 +88,7 @@ func (c core) subscribe() {
 					break Consume
 				}
 				for err := sub.Ack(packet.DeliveryTag, false); err != nil; {
+					log.Printf("failed acking. %v", err)
 				}
 				c.received <- Recv{
 					Data:  packet.Body,
@@ -139,6 +138,7 @@ func (c core) publish() {
 					Body: body.Data,
 				})
 				if err != nil {
+					log.Printf("failed publishing %#v. %v", body, err)
 					pending <- body
 					pub.Connection.Close()
 					break Publish
