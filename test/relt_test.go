@@ -10,14 +10,22 @@ import (
 
 func TestRelt_StartAndStop(t *testing.T) {
 	conf := relt.DefaultReltConfiguration()
-	relt := relt.NewRelt(*conf)
+	relt, err := relt.NewRelt(*conf)
+	if err != nil {
+		t.Fatalf("failed connecting. %v", err)
+		return
+	}
 	relt.Close()
 }
 
 func TestRelt_PublishAndReceiveMessage(t *testing.T) {
 	conf := relt.DefaultReltConfiguration()
 	conf.Name = "random-test-name"
-	r := relt.NewRelt(*conf)
+	r, err := relt.NewRelt(*conf)
+	if err != nil {
+		t.Fatalf("failed connecting. %v", err)
+		return
+	}
 	defer r.Close()
 
 	data := []byte("hello")
@@ -35,7 +43,7 @@ func TestRelt_PublishAndReceiveMessage(t *testing.T) {
 		}
 	}()
 
-	err := r.Broadcast(relt.Send{
+	err = r.Broadcast(relt.Send{
 		Address: conf.Exchange,
 		Data:    data,
 	})
