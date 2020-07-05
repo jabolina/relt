@@ -87,7 +87,7 @@ func (c core) subscribe(consumer <-chan amqp.Delivery) {
 //
 // This will keep polling until the context is cancelled, and
 // will receive messages to be published through the channel.
-func (c core) publish(confirm <- chan amqp.Confirmation) {
+func (c core) publish(confirm <-chan amqp.Confirmation) {
 	defer func() {
 		log.Println("closing rabbitmq publisher")
 	}()
@@ -166,7 +166,7 @@ func (c *core) declarations() error {
 	c.connection = conn
 	c.broker = ch
 
-	err = ch.ExchangeDeclare(string(c.configuration.Exchange), "fanout", true, false, false, false, nil)
+	err = ch.ExchangeDeclare(string(c.configuration.Exchange), "fanout", false, true, false, false, nil)
 	if err != nil {
 		log.Fatalf("error declaring exchange %s: %v", c.configuration.Exchange, err)
 	}
