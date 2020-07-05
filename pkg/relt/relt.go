@@ -93,7 +93,7 @@ func (r *Relt) Close() {
 
 // Creates a new instance of the reliable transport,
 // and start all needed routines.
-func NewRelt(configuration ReltConfiguration) *Relt {
+func NewRelt(configuration ReltConfiguration) (*Relt, error) {
 	ctx, done := context.WithCancel(context.Background())
 	relt := &Relt{
 		ctx: &invoker{
@@ -103,7 +103,11 @@ func NewRelt(configuration ReltConfiguration) *Relt {
 		finish:        done,
 		configuration: configuration,
 	}
-	relt.core = newCore(*relt)
+	c, err := newCore(*relt)
+	if err != nil {
+		return nil, err
+	}
+	relt.core = c
 	relt.ctx.spawn(relt.run)
-	return relt
+	return relt, nil
 }
