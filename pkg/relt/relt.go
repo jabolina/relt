@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 )
 
 var (
 	ErrInvalidGroupAddress = errors.New("group address cannot be empty")
 	ErrInvalidMessage      = errors.New("message cannot be nil")
 	ErrContextClosed       = errors.New("cannot send message on closed transport")
+	ErrPublishTimeout      = errors.New("took to long to publish message")
 )
 
 // Holds information about the transport context.
@@ -64,28 +66,27 @@ func (r Relt) Consume() <-chan Recv {
 
 // Implements the Transport interface.
 func (r Relt) Broadcast(message Send) error {
+	if len(message.Address) == 0 {
+		return ErrInvalidGroupAddress
+	}
+
+	if message.Data == nil {
+		return ErrInvalidMessage
+	}
+
 	select {
 	case <-r.cancel.Done():
 		return ErrContextClosed
-	default:
-		if len(message.Address) == 0 {
-			return ErrInvalidGroupAddress
-		}
-
-		if message.Data == nil {
-			return ErrInvalidMessage
-		}
-
-		r.ctx.spawn(func() {
-			r.core.sending <- message
-		})
-
-		return nil
+	case <-time.After(200 * time.Millisecond):
+		return ErrPublishTimeout
+	case r.core.sending <- message:
 	}
+	return nil
 }
 
 // Implements the Transport interface.
 func (r *Relt) Close() {
+	defer close(r.core.sending)
 	r.finish()
 	r.core.close()
 	r.ctx.group.Wait()

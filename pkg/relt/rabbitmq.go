@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/streadway/amqp"
 	"log"
+	"time"
 )
 
 // Compose struct of an AMQP connection and channel.
@@ -70,9 +71,14 @@ func (c core) subscribe(consumer <-chan amqp.Delivery) {
 			for err := c.broker.Ack(packet.DeliveryTag, false); err != nil; {
 				log.Printf("failed acking. %v", err)
 			}
-			c.received <- Recv{
+			recv := Recv{
 				Data:  packet.Body,
 				Error: nil,
+			}
+			select {
+			case <-c.cancellable.Done():
+				return
+			case c.received <- recv:
 			}
 		case <-c.cancellable.Done():
 			return
@@ -103,14 +109,21 @@ func (c core) publish(confirm <-chan amqp.Confirmation) {
 			if !running {
 				return
 			}
-			err := c.broker.Publish(string(body.Address), "*", false, false, amqp.Publishing{
-				Body: body.Data,
-			})
 
-			if err != nil {
-				log.Printf("failed publishing %#v. %v", body, err)
-				break
-			}
+			c.ctx.spawn(func() {
+				err := c.broker.Publish(string(body.Address), "*", false, false, amqp.Publishing{
+					Body: body.Data,
+				})
+				if err != nil {
+					time.Sleep(150 * time.Millisecond)
+					select {
+					case <-time.After(150 * time.Millisecond):
+						return
+					case c.sending <- body:
+						return
+					}
+				}
+			})
 		case <-c.cancellable.Done():
 			return
 		}
@@ -124,7 +137,6 @@ func (c core) publish(confirm <-chan amqp.Confirmation) {
 // when the context is canceled.
 func (c core) start() {
 	defer func() {
-		close(c.sending)
 		close(c.received)
 		c.broker.Close()
 		c.connection.Close()
