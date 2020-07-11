@@ -7,23 +7,14 @@ import (
 	"time"
 )
 
-// Compose struct of an AMQP connection and channel.
-type session struct {
-	*amqp.Connection
-	*amqp.Channel
-}
-
 // The core structure responsible for
 // sending and receiving messages through RabbitMQ.
 type core struct {
 	// A reference for the Relt context.
-	ctx *invoker
+	invoker *invoker
 
 	// Context for the core structure.
-	cancellable context.Context
-
-	// Function for closing the core.
-	cancel context.CancelFunc
+	ctx context.Context
 
 	// Configuration for both Relt and AMQP.
 	configuration ReltConfiguration
@@ -59,6 +50,7 @@ type core struct {
 func (c core) subscribe(consumer <-chan amqp.Delivery) {
 	defer func() {
 		log.Println("closing rabbitmq consumer")
+		recover()
 	}()
 
 	for {
@@ -75,12 +67,8 @@ func (c core) subscribe(consumer <-chan amqp.Delivery) {
 				Data:  packet.Body,
 				Error: nil,
 			}
-			select {
-			case <-c.cancellable.Done():
-				return
-			case c.received <- recv:
-			}
-		case <-c.cancellable.Done():
+			c.received <- recv
+		case <-c.ctx.Done():
 			return
 		}
 	}
@@ -110,7 +98,7 @@ func (c core) publish(confirm <-chan amqp.Confirmation) {
 				return
 			}
 
-			c.ctx.spawn(func() {
+			c.invoker.spawn(func() {
 				err := c.broker.Publish(string(body.Address), "*", false, false, amqp.Publishing{
 					Body: body.Data,
 				})
@@ -124,7 +112,7 @@ func (c core) publish(confirm <-chan amqp.Confirmation) {
 					}
 				}
 			})
-		case <-c.cancellable.Done():
+		case <-c.ctx.Done():
 			return
 		}
 	}
@@ -147,7 +135,7 @@ func (c core) start() {
 
 	for !c.connection.IsClosed() {
 		select {
-		case <-c.cancellable.Done():
+		case <-c.ctx.Done():
 			return
 		case err := <-fails:
 			log.Printf("error from connection. %v", err)
@@ -157,11 +145,6 @@ func (c core) start() {
 			}
 		}
 	}
-}
-
-// Cancel the context for the core structure.
-func (c core) close() {
-	c.cancel()
 }
 
 func (c *core) declarations() error {
@@ -204,15 +187,15 @@ func (c *core) declarations() error {
 		close(confirm)
 	}
 
-	c.ctx.spawn(func() {
+	c.invoker.spawn(func() {
 		c.subscribe(consumer)
 	})
 
-	c.ctx.spawn(func() {
+	c.invoker.spawn(func() {
 		c.publish(confirm)
 	})
 
-	c.ctx.spawn(c.start)
+	c.invoker.spawn(c.start)
 
 	return nil
 }
@@ -220,11 +203,9 @@ func (c *core) declarations() error {
 // Creates a new instance of the core structure.
 // This will also start running and consuming messages.
 func newCore(relt Relt) (*core, error) {
-	ctx, cancel := context.WithCancel(context.Background())
 	c := &core{
-		ctx:           relt.ctx,
-		cancellable:   ctx,
-		cancel:        cancel,
+		invoker:       relt.ctx,
+		ctx:           relt.cancel,
 		configuration: relt.configuration,
 		received:      make(chan Recv),
 		sending:       make(chan Send),

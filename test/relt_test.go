@@ -56,6 +56,38 @@ func TestRelt_PublishAndReceiveMessage(t *testing.T) {
 	group.Wait()
 }
 
+func Test_MultipleConnections(t *testing.T) {
+	var connections []*relt.Relt
+	testSize := 150
+	for i := 0; i < testSize; i++ {
+		conf := relt.DefaultReltConfiguration()
+		conf.Name = fmt.Sprintf("random-test-name-%d", i)
+		r, err := relt.NewRelt(*conf)
+		if err != nil {
+			t.Errorf("failed connecting %s. %v", conf.Name, err)
+		}
+		connections = append(connections, r)
+	}
+
+	time.Sleep(time.Second)
+
+	for i, connection := range connections {
+		done := make(chan bool)
+		go func() {
+			connection.Close()
+			done <- true
+		}()
+		select {
+		case <-done:
+			break
+		case <-time.After(time.Second):
+			t.Errorf("too long disconnecting %d", i)
+			break
+		}
+		close(done)
+	}
+}
+
 func Test_LoadPublishAndReceiveMessage(t *testing.T) {
 	conf := relt.DefaultReltConfiguration()
 	conf.Name = "random-test-name"

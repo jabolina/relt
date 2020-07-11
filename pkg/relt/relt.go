@@ -51,14 +51,6 @@ type Relt struct {
 	core *core
 }
 
-// Run will lock the transport waiting for a shutdown
-// notification.
-// When a shutdown notification arrives all goroutines
-// must be finished and only then the returns
-func (r *Relt) run() {
-	<-r.cancel.Done()
-}
-
 // Implements the Transport interface.
 func (r Relt) Consume() <-chan Recv {
 	return r.core.received
@@ -88,7 +80,6 @@ func (r Relt) Broadcast(message Send) error {
 func (r *Relt) Close() {
 	defer close(r.core.sending)
 	r.finish()
-	r.core.close()
 	r.ctx.group.Wait()
 }
 
@@ -109,6 +100,5 @@ func NewRelt(configuration ReltConfiguration) (*Relt, error) {
 		return nil, err
 	}
 	relt.core = c
-	relt.ctx.spawn(relt.run)
 	return relt, nil
 }

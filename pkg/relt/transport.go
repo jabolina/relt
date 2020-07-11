@@ -1,5 +1,7 @@
 package relt
 
+import "time"
+
 // When broadcasting or multicasting a message must provide
 // the group address.
 type GroupAddress string
@@ -54,5 +56,5 @@ type Transport interface {
 
 	// To shutdown the transport and stop consuming and
 	// publishing new messages.
-	Close()
+	Close(timeout time.Duration)
 }
