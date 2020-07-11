@@ -1,5 +1,7 @@
 # Relt
 
+![Go](https://github.com/jabolina/relt/workflows/Go/badge.svg)
+
 Primitives for Reliable Transport. At this point, the "reliable transport" is the AMQP protocol implemented
 by the RabbitMQ and that's it.
 
