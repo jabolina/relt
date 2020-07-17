@@ -141,3 +141,74 @@ func Test_LoadPublishAndReceiveMessage(t *testing.T) {
 		return
 	}
 }
+
+func Test_LoadPublishAndReceiveMultipleConnection(t *testing.T) {
+	conf1 := relt.DefaultReltConfiguration()
+	conf1.Name = "random-test-name-st"
+	first, err := relt.NewRelt(*conf1)
+	if err != nil {
+		t.Fatalf("failed connecting. %v", err)
+		return
+	}
+	defer first.Close()
+
+	conf2 := relt.DefaultReltConfiguration()
+	conf2.Name = "random-test-name-snd"
+	conf2.Exchange = "relt-exch-2"
+	second, err := relt.NewRelt(*conf2)
+	if err != nil {
+		t.Fatalf("failed connecting. %v", err)
+		return
+	}
+	defer second.Close()
+
+	group := &sync.WaitGroup{}
+	testSize := 1000
+
+	for i := 0; i < testSize; i++ {
+		group.Add(1)
+		read := func() {
+			defer group.Done()
+			select {
+			case recv := <-second.Consume():
+				if recv.Data == nil || len(recv.Data) == 0 {
+					t.Errorf("received wrong data")
+				}
+
+				if recv.Error != nil {
+					t.Errorf("error on consumed response. %v", recv.Error)
+				}
+				return
+			case <-time.After(500 * time.Millisecond):
+				t.Errorf("timed out receiving")
+				return
+			}
+		}
+
+		data := []byte(fmt.Sprintf("%d", i))
+		go read()
+
+		err = first.Broadcast(relt.Send{
+			Address: conf2.Exchange,
+			Data:    data,
+		})
+
+		if err != nil {
+			t.Errorf("failed broadcasting. %v", err)
+		}
+	}
+
+	done := make(chan bool)
+	go func() {
+		group.Wait()
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		return
+	case <-time.After(20 * time.Second):
+		t.Errorf("too long to routines to finish")
+		return
+	}
+}
