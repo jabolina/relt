@@ -166,7 +166,7 @@ func (c *core) declarations() error {
 		log.Fatalf("error declaring exchange %s: %v", c.configuration.Exchange, err)
 	}
 
-	_, err = ch.QueueDeclare(c.configuration.Name, false, true, true, false, nil)
+	_, err = ch.QueueDeclare(c.configuration.Name, true, false, true, false, nil)
 	if err != nil {
 		return err
 	}
