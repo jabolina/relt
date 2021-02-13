@@ -3,8 +3,7 @@ package relt
 import (
 	"context"
 	"errors"
-	"sync"
-	"time"
+	"github.com/jabolina/relt/internal"
 )
 
 var (
@@ -14,50 +13,24 @@ var (
 	ErrPublishTimeout      = errors.New("took to long to publish message")
 )
 
-// Holds information about the transport context.
-// Such as keeping track of spawned goroutines.
-type invoker struct {
-	// Used to track goroutines.
-	group *sync.WaitGroup
-}
-
-// Spawn a new goroutine and controls it with
-// the wait group.
-func (c *invoker) spawn(f func()) {
-	c.group.Add(1)
-	go func() {
-		defer c.group.Done()
-		f()
-	}()
-}
-
 // The implementation for the Transport interface
 // providing reliable communication between hosts.
 type Relt struct {
-	// Context for the transport, used internally only.
-	ctx *invoker
-
-	// Information about shutdown the transport.
-	cancel context.Context
-
-	// Cancel the transport context.
-	finish context.CancelFunc
-
 	// Holds the configuration about the core
 	// and the Relt transport.
-	configuration ReltConfiguration
+	configuration Configuration
 
-	// Holds the core structure.
-	core *core
+	// Holds the Core structure.
+	core internal.Core
 }
 
 // Implements the Transport interface.
-func (r Relt) Consume() <-chan Recv {
-	return r.core.received
+func (r *Relt) Consume() (<-chan internal.Message, error) {
+	return r.core.Listen()
 }
 
 // Implements the Transport interface.
-func (r Relt) Broadcast(message Send) error {
+func (r *Relt) Broadcast(ctx context.Context, message Send) error {
 	if len(message.Address) == 0 {
 		return ErrInvalidGroupAddress
 	}
@@ -66,39 +39,39 @@ func (r Relt) Broadcast(message Send) error {
 		return ErrInvalidMessage
 	}
 
+	timeout, cancel := context.WithTimeout(ctx, r.configuration.DefaultTimeout)
+	defer cancel()
+
 	select {
-	case <-r.cancel.Done():
+	case <-ctx.Done():
 		return ErrContextClosed
-	case <-time.After(200 * time.Millisecond):
+	case <-timeout.Done():
 		return ErrPublishTimeout
-	case r.core.sending <- message:
+	case err := <-r.core.Send(timeout, string(message.Address), message.Data):
+		return err
 	}
-	return nil
 }
 
 // Implements the Transport interface.
-func (r *Relt) Close() {
-	defer close(r.core.sending)
-	r.finish()
-	r.ctx.group.Wait()
+func (r *Relt) Close() error {
+	return r.core.Close()
 }
 
 // Creates a new instance of the reliable transport,
 // and start all needed routines.
-func NewRelt(configuration ReltConfiguration) (*Relt, error) {
-	ctx, done := context.WithCancel(context.Background())
-	relt := &Relt{
-		ctx: &invoker{
-			group: &sync.WaitGroup{},
-		},
-		cancel:        ctx,
-		finish:        done,
-		configuration: configuration,
+func NewRelt(configuration Configuration) (*Relt, error) {
+	conf := internal.CoreConfiguration{
+		Partition:      string(configuration.Exchange),
+		Server:         configuration.Url,
+		DefaultTimeout: configuration.DefaultTimeout,
 	}
-	c, err := newCore(*relt)
+	core, err := internal.NewCore(conf)
 	if err != nil {
 		return nil, err
 	}
-	relt.core = c
+	relt := &Relt{
+		configuration: configuration,
+		core:          core,
+	}
 	return relt, nil
 }

@@ -1,6 +1,10 @@
 package relt
 
-import "time"
+import (
+	"context"
+	"github.com/jabolina/relt/internal"
+	"io"
+)
 
 // When broadcasting or multicasting a message must provide
 // the group address.
@@ -37,8 +41,10 @@ type Send struct {
 // response back, everything is just message passing simulating
 // events that can occur.
 type Transport interface {
+	io.Closer
+
 	// A channel for consuming received messages.
-	Consume() <-chan Recv
+	Consume() (<-chan internal.Message, error)
 
 	// Broadcast a message to a given group.
 	// See that this not work in the request - response model,
@@ -52,9 +58,5 @@ type Transport interface {
 	// through a channel, this channel is only closed when the
 	// Relt transport is closed, so if the the transport is already
 	// closed this function will panic.
-	Broadcast(message Send) error
-
-	// To shutdown the transport and stop consuming and
-	// publishing new messages.
-	Close(timeout time.Duration)
+	Broadcast(ctx context.Context, message Send) error
 }

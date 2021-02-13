@@ -4,6 +4,7 @@ import (
 	crand "crypto/rand"
 	"fmt"
 	"net"
+	"net/url"
 )
 
 // Generates a random 128-bit UUID, panic if not possible.
@@ -30,4 +31,9 @@ func GenerateRandomIP() (string, error) {
 	}
 
 	return listener.Addr().String(), nil
+}
+
+func IsUrl(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme != ""
 }
