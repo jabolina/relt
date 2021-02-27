@@ -2,17 +2,17 @@ package relt
 
 import (
 	"errors"
-	"strings"
+	"time"
 )
 
 var (
-	ErrInvalidConfiguration = errors.New("invalid AMQP URL for connection")
+	ErrInvalidConfiguration = errors.New("invalid URL for connection")
 	DefaultExchangeName     = GroupAddress("relt")
 )
 
 // Configuration used for creating a new instance
 // of the Relt.
-type ReltConfiguration struct {
+type Configuration struct {
 	// The Relt name. Is not required, if empty a
 	// random string will be generated to be used.
 	// This must be unique, since it will be used to declare
@@ -32,6 +32,9 @@ type ReltConfiguration struct {
 	// messages. If all peers are using the same exchange then
 	// is the same as all peers are a single partition.
 	Exchange GroupAddress
+
+	// Default timeout to be applied when handling asynchronous methods.
+	DefaultTimeout time.Duration
 }
 
 // Creates the default configuration for the Relt.
@@ -39,16 +42,17 @@ type ReltConfiguration struct {
 // the connection Url will connect to a local broker using
 // the user `guest` and password `guest`.
 // The default exchange will fallback to `relt`.
-func DefaultReltConfiguration() *ReltConfiguration {
-	return &ReltConfiguration{
-		Name:     GenerateUID(),
-		Url:      "amqp://guest:guest@127.0.0.1:5672/",
-		Exchange: DefaultExchangeName,
+func DefaultReltConfiguration() *Configuration {
+	return &Configuration{
+		Name:           GenerateUID(),
+		Url:            "localhost:2379",
+		Exchange:       DefaultExchangeName,
+		DefaultTimeout: time.Second,
 	}
 }
 
 // Verify if the given Relt configuration is valid.
-func (c *ReltConfiguration) ValidateConfiguration() error {
+func (c *Configuration) ValidateConfiguration() error {
 	if len(c.Name) == 0 {
 		c.Name = GenerateUID()
 	}
@@ -61,7 +65,11 @@ func (c *ReltConfiguration) ValidateConfiguration() error {
 		return ErrInvalidConfiguration
 	}
 
-	if strings.HasPrefix(c.Url, "amqp://") {
+	if !IsUrl(c.Url) {
+		return ErrInvalidConfiguration
+	}
+
+	if c.DefaultTimeout.Microseconds() <= 0 {
 		return ErrInvalidConfiguration
 	}
 
