@@ -15,12 +15,17 @@ var (
 
 // The implementation for the Transport interface
 // providing reliable communication between hosts.
+//
+// Every command must be issued through this struct,
+// where a single object instance represents a peer that
+// participates on the atomic broadcast protocol.
 type Relt struct {
-	// Holds the configuration about the core
-	// and the Relt transport.
+	// Holds the configuration.
 	configuration Configuration
 
 	// Holds the Core structure.
+	// Every command received will be prepared and sent
+	// through the core structure.
 	core internal.Core
 }
 
@@ -30,6 +35,9 @@ func (r *Relt) Consume() (<-chan internal.Message, error) {
 }
 
 // Implements the Transport interface.
+// Will broadcast a message to all peers that listen to the destination.
+// This method is bounded by the given context lifetime and by the
+// configured timeout.
 func (r *Relt) Broadcast(ctx context.Context, message Send) error {
 	if len(message.Address) == 0 {
 		return ErrInvalidGroupAddress

@@ -29,6 +29,9 @@ deps: # @HELP install dependencies
 	@echo "getting dependencies"
 	go get -t -d -v ./...
 
+benchmark: # @HELP run benchmark and generate files for pprof
+	go test -bench=. -run=^$ -benchmem -cpuprofile profile.out -memprofile memprofile.out ./test/...
+
 build: # @HELP build the packages
 	sh $(PWD)/scripts/build.sh
 

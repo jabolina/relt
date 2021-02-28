@@ -13,24 +13,22 @@ var (
 // Configuration used for creating a new instance
 // of the Relt.
 type Configuration struct {
-	// The Relt name. Is not required, if empty a
-	// random string will be generated to be used.
-	// This must be unique, since it will be used to declare
-	// the peer queue for consumption.
+	// The Relt name. Is not required, if empty a random string will
+	// be generated to be used.
 	Name string
 
-	// Only plain auth is supported. The username + password
-	// will be passed in the connection URL.
+	// URL used for connecting to the atomic broadcast protocol.
 	Url string
 
-	// This will be used to create an exchange on the RabbitMQ
-	// broker. If the user wants to declare its own name for the
-	// exchange, if none is passed, the value 'relt' will be used.
+	// This is the partition where the transport will act to. The client
+	// will listen for only messages where the destination is the configured
+	// partition.
 	//
 	// When declaring multiple partitions, this must be configured
 	// properly, since this will dictate which peers received the
 	// messages. If all peers are using the same exchange then
-	// is the same as all peers are a single partition.
+	// the clients will act as a single unity, where every peer
+	// will receive all messages in the same order.
 	Exchange GroupAddress
 
 	// Default timeout to be applied when handling asynchronous methods.
@@ -38,10 +36,6 @@ type Configuration struct {
 }
 
 // Creates the default configuration for the Relt.
-// The peer, thus the queue name will be randomly generated,
-// the connection Url will connect to a local broker using
-// the user `guest` and password `guest`.
-// The default exchange will fallback to `relt`.
 func DefaultReltConfiguration() *Configuration {
 	return &Configuration{
 		Name:           GenerateUID(),

@@ -49,15 +49,15 @@ func consume(r *relt.Relt, ctx context.Context) {
 func main() {
 	conf := relt.DefaultReltConfiguration()
 	conf.Name = "local-test"
-	relt, _ := relt.NewRelt(*conf)
+	r, _ := relt.NewRelt(*conf)
 	ctx, done := context.WithCancel(context.Background())
 
 	go func() {
-		produce(relt, os.Stdin, ctx)
+		produce(r, os.Stdin, ctx)
 	}()
 
 	go func() {
-		consume(relt, ctx)
+		consume(r, ctx)
 	}()
 
 	c := make(chan os.Signal, 1)
@@ -69,5 +69,5 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	relt.Close()
+	r.Close()
 }

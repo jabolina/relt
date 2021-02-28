@@ -30,7 +30,18 @@ func (m *MessageHist) values() []string {
 	return copied
 }
 
+func (m *MessageHist) size() int {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return len(m.history)
+}
+
 func (m *MessageHist) compare(other MessageHist) int {
+	// if both objects hold the same mutex a deadlock will be created.
+	if m.mutex == other.mutex {
+		return 0
+	}
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	different := 0
