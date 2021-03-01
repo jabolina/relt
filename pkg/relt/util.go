@@ -33,6 +33,7 @@ func GenerateRandomIP() (string, error) {
 	return listener.Addr().String(), nil
 }
 
+// Verify if the given value is a valid URL.
 func IsUrl(value string) bool {
 	parsed, err := url.Parse(value)
 	return err == nil && parsed.Scheme != ""

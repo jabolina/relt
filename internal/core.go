@@ -16,6 +16,7 @@ var (
 	coreAlreadyWatching = errors.New("already watching partition")
 )
 
+// Configuration for the Core interface.
 type CoreConfiguration struct {
 	// Partition the Coordinator will work with.
 	Partition string
@@ -23,11 +24,14 @@ type CoreConfiguration struct {
 	// Server address for the Coordinator.
 	Server string
 
-	// Default timeout to be applied when handling channels.
+	// Default timeout to be applied when handling channels and
+	// asynchronous operations.
 	DefaultTimeout time.Duration
 }
 
 // Holds all flags used to manage the Core state.
+// This is the same as an AtomicBoolean and is used internally
+// to manage the core states.
 type CoreFlags struct {
 	// Flag for the shutdown state.
 	shutdown Flag
@@ -36,13 +40,19 @@ type CoreFlags struct {
 	watching Flag
 }
 
-// Core is the interface that will hold the Relt connection to the Coordinator.
+// Core is the interface that will create the link between Relt requests
+// and the Coordinator.
 // Every command issued will be parsed here, and every command received should
 // be handled here before going back to the client.
+// Everything after this stage should care only about the atomic broadcast protocol
+// and everything before should be abstracted as a simple communication primitive.
+// This means that any parsing or state handling for the client should be done here.
 type Core interface {
 	io.Closer
 
 	// Start listening for new messages.
+	// This will receive messages from the atomic broadcast protocol
+	// and parse to an object the client can handle.
 	Listen() (<-chan Message, error)
 
 	// Send a message asynchronously for the given partition.
@@ -66,12 +76,14 @@ type ReltCore struct {
 	handler *GoRoutineHandler
 
 	// Coordinator to issues commands and receive Event.
+	// The coordinator is the interface to reach the atomic
+	// broadcast protocol.
 	coord Coordinator
 
 	// Channel for sending Message to the client.
 	output chan Message
 
-	// Flags for handling state.
+	// Flags for handling internal state.
 	flags CoreFlags
 
 	// Core configuration parameters.
@@ -79,8 +91,8 @@ type ReltCore struct {
 }
 
 // Create a new ReltCore using the given configuration.
-// As an effect, this will instantiate a Coordinator a failures
-// can happen while handling connections between the peers.
+// As an effect, this will instantiate a Coordinator a failure
+// can happen while handling connection to the atomic broadcast server.
 func NewCore(configuration CoreConfiguration) (Core, error) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	handler := NewRoutineHandler()
@@ -136,7 +148,7 @@ func (r *ReltCore) Listen() (<-chan Message, error) {
 	}
 
 	if r.flags.watching.Inactivate() {
-		events := make(chan Event, 100)
+		events := make(chan Event)
 		if err := r.coord.Watch(events); err != nil {
 			return nil, err
 		}
@@ -162,15 +174,14 @@ func (r *ReltCore) Listen() (<-chan Message, error) {
 // This is a broadcast message, which means that if _N_ nodes are
 // subscribed for a partition, every node will receive the message.
 func (r *ReltCore) Send(ctx context.Context, dest string, data []byte) <-chan error {
-	response := make(chan error, 1)
+	response := make(chan error)
 	writeRequest := func() {
 		if r.flags.shutdown.IsActive() {
 			event := Event{
 				Key:   dest,
 				Value: data,
 			}
-			err := <-r.coord.Write(ctx, event)
-			response <- err
+			response <- r.coord.Write(ctx, event)
 		} else {
 			response <- coreWasShutdown
 		}
@@ -192,6 +203,7 @@ func (r *ReltCore) Close() error {
 		}
 		r.finish()
 		r.handler.Close()
+		return nil
 	}
 	return coreWasShutdown
 }

@@ -6,28 +6,18 @@ import (
 	"io"
 )
 
-// When broadcasting or multicasting a message must provide
-// the group address.
+// When broadcasting a message must provide the group address.
 type GroupAddress string
 
-// Denotes a received information or an error
-// that occurred in the channel.
-type Recv struct {
-	// Received data or nil if is an error event.
-	Data []byte
-
-	// Returns an error back to the listener.
-	Error error
-}
-
 // Denotes an information that will be sent.
-// By design, the group address cannot be empty
-// and the Data to be sent cannot be nil, must be at least
-// and empty slice.
+// By design, the group address cannot be empty and the Data to be
+// sent cannot be nil, must be at least an empty slice.
 type Send struct {
 	// Which group the message will be sent.
-	// This is the name of the exchange that must receive
-	// the message and not an actual IP address.
+	// This is the name of the exchange that must receive the message
+	// and not an actual IP address.
+	// If multiple peers are listening, all of them will receive the
+	// message in the same order.
 	Address GroupAddress
 
 	// Data to be sent to the group.
@@ -35,11 +25,6 @@ type Send struct {
 }
 
 // A interface to offer a high level API for transport.
-// This transport is backed by a RabbitMQ using the quorum queues,
-// that uses the Raft Protocol for consistency.
-// Everything sent by this transport will not receive a direct
-// response back, everything is just message passing simulating
-// events that can occur.
 type Transport interface {
 	io.Closer
 
@@ -56,7 +41,6 @@ type Transport interface {
 	//
 	// A goroutine will be spawned and the message will be sent
 	// through a channel, this channel is only closed when the
-	// Relt transport is closed, so if the the transport is already
-	// closed this function will panic.
+	// Relt transport is closed.
 	Broadcast(ctx context.Context, message Send) error
 }
